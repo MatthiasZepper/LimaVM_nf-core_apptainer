@@ -1,0 +1,130 @@
+################################################################
+#                                        ,--./,-.
+#        ___     __   __   __   ___     /,-._.--~'
+#  |\ | |__  __ /  ` /  \ |__) |__         }  {
+#  | \| |       \__, \__/ |  \ |___     \`-._,-`-,
+#                                        `._,._,'
+#  LIMA virtual machine image with nf-core tools installation
+################################################################
+# $ limactl start ./nf-core_apptainer.yaml
+# $ limactl shell apptainer apptainer run -u -B $HOME:$HOME docker://alpine
+
+
+# Specify the architecture of the guest system you would like to use.
+# Since this image was created to provision pipelines on an aarch64 macOS host for x86_64, the latter was chosen as default. 
+arch: "x86_64"
+# arch: "aarch64"
+
+
+vmType: "qemu"
+
+images:
+# Try using release-yyyyMMdd image if available for consistency. Note that those will be removed after about half a year.
+  - location: "https://cloud-images.ubuntu.com/releases/24.04/release-20240702/ubuntu-24.04-server-cloudimg-amd64.img"
+    arch: "x86_64"
+    digest: "sha256:182dc760bfca26c45fb4e4668049ecd4d0ecdd6171b3bae81d0135e8f1e9d93e"
+  - location: "https://cloud-images.ubuntu.com/releases/24.04/release-20240702/ubuntu-24.04-server-cloudimg-arm64.img"
+    arch: "aarch64"
+    digest: "sha256:5fe06e10a3b53cfff06edcb8595552b1f0372265b69fa424aa464eb4bcba3b09"
+
+  # Fallback to the latest released image.
+  # Hint: run `limactl prune` to invalidate the cache
+  - location: "https://cloud-images.ubuntu.com/releases/24.04/release/ubuntu-24.04-server-cloudimg-amd64.img"
+    arch: "x86_64"
+  - location: "https://cloud-images.ubuntu.com/releases/24.04/release/ubuntu-24.04-server-cloudimg-arm64.img"
+    arch: "aarch64"
+
+mounts:
+  - location: "~"
+  - location: "/tmp/lima-nfcore"
+    writable: true
+  - location: "/tmp/lima-singularity_cache"
+    writable: true
+containerd:
+  system: false
+  user: false
+provision:
+  - mode: system
+    script: |
+      #!/bin/bash
+      set -eux -o pipefail
+      command -v apptainer >/dev/null 2>&1 && exit 0
+      # Workaround for https://github.com/apptainer/apptainer/issues/2027
+      echo "kernel.apparmor_restrict_unprivileged_userns = 0" >/etc/sysctl.d/99-userns.conf
+      sysctl --system
+      # add the "Official PPA for Apptainer"
+      add-apt-repository -y ppa:apptainer/ppa
+      apt-get update
+      apt-get install -y apptainer
+  - mode: system
+    script: |
+      #!/bin/bash
+      apt install -y openjdk-21-jre-headless
+      cd /bin
+      curl -s https://get.nextflow.io | bash
+      chmod 755 /bin/nextflow
+  - mode: system
+    script: |
+      #!/bin/bash
+      apt install -y python3-pip
+      apt install -y pipx
+  - mode: user
+    script: |
+      #!/bin/bash
+      nextflow -version
+      nextflow plugins install nf-validation
+  - mode: user
+    script: |
+      #!/bin/bash
+      pipx install nf-core
+      pipx ensurepath
+      pipx run nf-core
+      echo 'alias nf-core="pipx run nf-core"' >> "/home/lima.linux/.bash_profile"
+      echo NXF_SINGULARITY_CACHEDIR="/tmp/lima-singularity_cache" >> "/home/lima.linux/.bash_profile"
+probes:
+  - mode: readiness
+    description: Corroborate that Apptainer is installed
+    script: |
+      #!/bin/bash
+      set -eux -o pipefail
+      if ! timeout 30s bash -c "until command -v apptainer >/dev/null 2>&1; do sleep 10; done"; then
+        echo >&2 "Apptainer installation failed."
+        exit 1
+      fi
+    hint: See "/var/log/cloud-init-output.log" in the virtual machine guest system for more information.
+  - mode: readiness
+    description: Corroborate that Nextflow is installed
+    script: |
+      #!/bin/bash
+      set -eux -o pipefail
+      if ! timeout 30s bash -c "until command -v nextflow >/dev/null 2>&1; do sleep 10; done"; then
+        echo >&2 "Nextflow installation failed."
+        exit 1
+      fi
+    hint: See "/var/log/cloud-init-output.log" in the virtual machine guest system for more information.
+  - mode: readiness
+    description: Corroborate that nf-core is installed
+    script: |
+      #!/bin/bash
+      set -eux -o pipefail
+      if ! timeout 30s bash -c "until command -v pipx run nf-core >/dev/null 2>&1; do sleep 10; done"; then
+        echo >&2 "NF core installation failed."
+        exit 1
+      fi
+    hint: See "/var/log/cloud-init-output.log" in the virtual machine guest system for more information.
+message: |
+  ######################################################
+  #                                        ,--./,-.    #
+  #        ___     __   __   __   ___     /,-._.--~'   #
+  #  |\ | |__  __ /  ` /  \ |__) |__         }  {      #
+  #  | \| |       \__, \__/ |  \ |___     \`-._,-`-,   #
+  #                                        `._,._,'    #
+  ######################################################
+
+  The virtual machine is now running. You can connect to it using the following command:
+
+  limactl shell nf-core_apptainer
+
+  To stop the virtual machine, execute on the host:
+
+  limactl stop nf-core_apptainer
