@@ -80,7 +80,8 @@ provision:
       pipx ensurepath
       pipx run nf-core
       echo 'alias nf-core="pipx run nf-core"' >> "/home/lima.linux/.bash_profile"
-      echo NXF_SINGULARITY_CACHEDIR="/tmp/lima-singularity_cache" >> "/home/lima.linux/.bash_profile"
+      echo 'NXF_SINGULARITY_CACHEDIR="/tmp/lima-singularity_cache"' >> "/home/lima.linux/.bash_profile"
+      echo 'XDG_CACHE_HOME="/tmp/lima-singularity_cache"' >> "/home/lima.linux/.bash_profile"
 probes:
   - mode: readiness
     description: Corroborate that Apptainer is installed
